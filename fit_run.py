@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.optimize import differential_evolution
 from skneuromsi.neural import Cuppini2017
+from skneuromsi.neural import Paredes2022
 
 ## TEMPORAL DATA
 
@@ -63,44 +64,50 @@ temporal_causes_data = np.array(
     ]
 )
 
-temporal_causes_data_short = temporal_causes_data[3:-2]
+temporal_causes_data_short = temporal_causes_data[6:-4]
 
 
-def temporal_cuppini2017_causes_job(a_tau, v_tau, m_tau, ff_weight, cm_weight):
-    causes = []
-    v_onset = 255
+def temporal_cuppini2017_causes_job(a_onset, a_tau, v_tau, m_tau, ff_weight, cm_weight):
+
+    v_onset = 110
+
     model = Cuppini2017(
         neurons=10,
         position_range=(0, 10),
         position_res=1,
-        time_range=(0, 575),
+        time_range=(0, 325),
         tau=(a_tau, v_tau, m_tau),
     )
-    for a_onset in v_onset + temporal_dis[3:-2]:
-        res = model.run(
-            feedforward_weight=ff_weight,
-            cross_modal_weight=cm_weight,
-            noise=False,
-            causes_kind="prob",
-            causes_dim="time",
-            auditory_stim_n=1,
-            visual_stim_n=1,
-            auditory_duration=6,
-            visual_duration=6,
-            auditory_onset=a_onset,
-            visual_onset=v_onset,
-        )
 
-        causes.append(res.causes_)
+    res = model.run(
+        feedforward_weight=ff_weight,
+        cross_modal_weight=cm_weight,
+        noise=False,
+        causes_kind="prob",
+        causes_dim="time",
+        auditory_stim_n=1,
+        visual_stim_n=1,
+        auditory_duration=6,
+        visual_duration=6,
+        auditory_onset=a_onset,
+        visual_onset=v_onset,
+        causes_peak_threshold=0.15,
+    )
+    prob_causes = res.causes_
 
-    return np.array(causes)
+    return prob_causes
 
 
 def temporal_cuppini2017_causes_cost(theta):
-    model_data = temporal_cuppini2017_causes_job(
-        theta[0], theta[1], theta[2], theta[3], theta[4]
-    )
+    v_onset = 110
+    causes = []
+    for a_onset in v_onset + temporal_dis[6:-4]:
+        prob_causes_per_a_onset = temporal_cuppini2017_causes_job(
+            a_onset, theta[0], theta[1], theta[2], theta[3], theta[4]
+        )
+        causes.append(prob_causes_per_a_onset)
 
+    model_data = np.array(causes)
     exp_data = temporal_causes_data_short
 
     cost = np.sum(np.square(np.divide(exp_data - model_data, exp_data)))
@@ -108,18 +115,16 @@ def temporal_cuppini2017_causes_cost(theta):
     return cost
 
 
-bounds = [(0.001, 75), (0.001, 75), (0.001, 75), (0.01, 100), (0.01, 100)]
+bounds = [(0.1, 75), (0.1, 75), (0.1, 75), (0.01, 100), (0.01, 25)]
 cuppini2017_temporal_causes_fit_res = differential_evolution(
     temporal_cuppini2017_causes_cost,
     bounds,
     disp=True,
     updating="deferred",
-    workers=14,
+    workers=28,
     polish=False,
     seed=111,
 )
 
-print(cuppini2017_temporal_causes_fit_res)
-
 pars = cuppini2017_temporal_causes_fit_res.x
-np.save("fit_res_pars.npy", pars)
+np.save("Cuppini_2017_temporal_fit_res_pars.npy", pars)

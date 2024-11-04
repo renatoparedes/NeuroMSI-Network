@@ -1,7 +1,9 @@
 import numpy as np
 from scipy.optimize import differential_evolution
 from skneuromsi.neural import Cuppini2017
+from skneuromsi.neural import Paredes2022
 from skneuromsi.sweep import ParameterSweep
+from skneuromsi.sweep import ProcessingStrategyABC
 
 ## TEMPORAL DATA
 
@@ -64,7 +66,17 @@ temporal_causes_data = np.array(
     ]
 )
 
-temporal_causes_data_short = temporal_causes_data[3:-2]
+temporal_causes_data_short = temporal_causes_data[6:-4]
+
+
+class CausesProcessingStrategy(ProcessingStrategyABC):
+    def map(self, result):
+        causes = result.causes_
+        del result._nddata
+        return causes
+
+    def reduce(self, results, **kwargs):
+        return np.array(results, dtype=np.float16)
 
 
 def temporal_cuppini2017_causes_job(a_tau, v_tau, m_tau, ff_weight, cm_weight):
@@ -72,18 +84,20 @@ def temporal_cuppini2017_causes_job(a_tau, v_tau, m_tau, ff_weight, cm_weight):
         neurons=10,
         position_range=(0, 10),
         position_res=1,
-        time_range=(0, 575),
+        time_range=(0, 325),
         tau=(a_tau, v_tau, m_tau),
     )
 
-    v_onset = 255
+    v_onset = 110
     sp = ParameterSweep(
         model=model,
         target="auditory_onset",
         repeat=1,
         n_jobs=1,
-        range=v_onset + temporal_dis[3:-2],
+        range=v_onset + temporal_dis[6:-4],
+        processing_strategy=CausesProcessingStrategy(),
     )
+
     res = sp.run(
         feedforward_weight=ff_weight,
         cross_modal_weight=cm_weight,
@@ -96,9 +110,8 @@ def temporal_cuppini2017_causes_job(a_tau, v_tau, m_tau, ff_weight, cm_weight):
         visual_duration=6,
         visual_onset=v_onset,
     )
-    causes = res.causes.causes_by_parameter(parameter="auditory_onset")[("", "Causes")]
 
-    return causes
+    return res
 
 
 def temporal_cuppini2017_causes_cost(theta):
@@ -119,12 +132,10 @@ cuppini2017_temporal_causes_fit_res = differential_evolution(
     bounds,
     disp=True,
     updating="deferred",
-    workers=14,
+    workers=30,
     polish=False,
     seed=111,
 )
-
-print(cuppini2017_temporal_causes_fit_res)
 
 pars = cuppini2017_temporal_causes_fit_res.x
 np.save("fit_res_pars.npy", pars)
